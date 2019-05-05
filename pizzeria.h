@@ -19,8 +19,7 @@ typedef struct pizza_s {
     int fatias;         ///< IMPORTANTE! NÃO REMOVER
     pedido_t* pedido;   ///< IMPORTANTE! NÃO REMOVER
     struct timespec ts; ///< IMPORTANTE! NÃO REMOVER
-
-    /* você pode adicionar coisas aqui */
+    pthread_mutex_t pegador;
 } pizza_t;
 
 void pizzeria_init(int tam_forno, int n_pizzaiolos, int n_mesas,
@@ -35,6 +34,7 @@ int  pegar_mesas(int tam_grupo);
 void garcom_tchau(int tam_grupo);
 void garcom_chamar();
 void fazer_pedido(pedido_t* pedido);
+void producao_pizza();
 
 int pizza_pegar_fatia(pizza_t* pizza);
 
