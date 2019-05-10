@@ -7,7 +7,7 @@
 #include <math.h>
 #include <pthread.h>
 
-int pizzaria_aberta = 1; // mudar pra int
+int pizzaria_aberta = 1; 
 int mesas_disponiveis;
 int num_pizzaiolos_g, num_mesas_g;
 sem_t garcons_disponiveis, espaco_forno, garcom_entrega, pizzaria_vazia;
@@ -71,6 +71,15 @@ void pizzeria_destroy() {
     pthread_mutex_destroy(&mutex_balcao);
 }
 
+void *garcom_leva_pizza(void* arg) {
+    pizza_t *pizza = (pizza_t*)arg;
+
+	garcom_entregar(pizza);
+	sem_post(&garcons_disponiveis);
+
+	pthread_exit(NULL);
+}
+
 void *producao_pizza(void* arg) {
 	
 	while (1) {
@@ -90,25 +99,26 @@ void *producao_pizza(void* arg) {
 	   	// verifica se pizza está pronta
 	   	sem_wait(&pizza->sem);
 	   	sem_destroy(&pizza->sem);
+	   	
+	   	pthread_mutex_lock(&mutex_pa);
+		pizzaiolo_retirar_forno(pizza);
+		pthread_mutex_unlock(&mutex_pa);
+		sem_post(&espaco_forno);
+
+		pthread_mutex_lock(&mutex_balcao);
+		garcom_chamar();
+		pthread_mutex_unlock(&mutex_balcao);
+
+		pthread_t garcom;
+		pthread_create(&garcom, NULL, garcom_leva_pizza, &pizza);
+		pthread_detach(garcom);
 	}
 
 	pthread_exit(NULL);
 }
 
 void pizza_assada(pizza_t* pizza) {
-   	pthread_mutex_lock(&mutex_pa);
-	pizzaiolo_retirar_forno(pizza);
-	pthread_mutex_unlock(&mutex_pa);
-	sem_post(&espaco_forno);
-
-	pthread_mutex_lock(&mutex_balcao);
-	sem_wait(&garcons_disponiveis);
-	pthread_mutex_unlock(&mutex_balcao);
-
 	sem_post(&pizza->sem);
-
-	garcom_entregar(pizza);
-	sem_post(&garcons_disponiveis);
 }
 
 
@@ -139,11 +149,11 @@ void garcom_tchau(int tam_grupo) {
 		sem_post(&pizzaria_vazia);
 	pthread_mutex_unlock(&mutex_mesas);
 
+    sem_post(&garcons_disponiveis);
 }
 
 void garcom_chamar() {
 	sem_wait(&garcons_disponiveis);
-    sem_post(&garcons_disponiveis);
 }
 
 void fazer_pedido(pedido_t* pedido) {
