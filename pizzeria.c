@@ -8,10 +8,10 @@
 #include <pthread.h>
 
 int pizzaria_aberta = 1; 
-int mesas_disponiveis;
+int mesas_disponiveis, pizzaiolos_finalizados = 0;
 int num_pizzaiolos_g, num_mesas_g;
-sem_t garcons_disponiveis, espaco_forno, garcom_entrega, pizzaria_vazia, fila_vazia;
-pthread_mutex_t mutex_mesas, mutex_pa, mutex_balcao;
+sem_t garcons_disponiveis, espaco_forno, pizzaria_vazia, pizzaiolos_encerrados;
+pthread_mutex_t mutex_mesas, mutex_pa, mutex_balcao, mutex_pizzaiolos;
 queue_t fila_pedidos;
 
 void pizzeria_init(int tam_forno, int n_pizzaiolos, int n_mesas,
@@ -27,14 +27,18 @@ void pizzeria_init(int tam_forno, int n_pizzaiolos, int n_mesas,
     queue_init(&fila_pedidos, tam_deck);
 
     // producao_pizza
-    sem_init(&espaco_forno, 0, tam_forno);
     pthread_mutex_init(&mutex_pa, NULL);
     pthread_mutex_init(&mutex_balcao, NULL);
+    pthread_mutex_init(&mutex_pizzaiolos, NULL);
+    
+    sem_init(&espaco_forno, 0, tam_forno);
+    sem_init(&pizzaiolos_encerrados, 0, 0);
+    sem_init(&pizzaria_vazia, 0, 0);
+
     pthread_t t_pizzaiolos[n_pizzaiolos];
     for (int i = 0; i < n_pizzaiolos; i++) {
     	pthread_create(&(t_pizzaiolos[i]), NULL, producao_pizza, NULL);
     }
-    sem_init(&fila_vazia, 0, 0);
 
     // garcom_tchau
     num_mesas_g = n_mesas;
@@ -53,7 +57,7 @@ void pizzeria_close() {
 		queue_push_back(&fila_pedidos, NULL);
 	}
 
-	sem_wait(&fila_vazia); 
+	sem_wait(&pizzaiolos_encerrados); 
 }
 
 void pizzeria_destroy() {
@@ -68,14 +72,18 @@ void pizzeria_destroy() {
     queue_destroy(&fila_pedidos);
 
     // producao_pizza
-    sem_destroy(&espaco_forno);
     pthread_mutex_destroy(&mutex_pa);
     pthread_mutex_destroy(&mutex_balcao);
-    sem_destroy(&fila_vazia);
+    pthread_mutex_destroy(&mutex_pizzaiolos);
+    sem_destroy(&espaco_forno);
+    sem_destroy(&pizzaiolos_encerrados);
+
+    // pizzeria_close
+    sem_destroy(&pizzaria_vazia);
+    sem_destroy(&pizzaiolos_encerrados);
 }
 
 void *garcom_leva_pizza(void* arg) {
-
 	garcom_entregar((pizza_t*)arg);
 	sem_post(&garcons_disponiveis);
 
@@ -112,11 +120,17 @@ void *producao_pizza(void* arg) {
 		pthread_mutex_unlock(&mutex_balcao);
 
 		pthread_t garcom;
-		pthread_detach(garcom);
 		pthread_create(&garcom, NULL, garcom_leva_pizza, pizza);
 	}
-	if (queue_empty(&fila_pedidos))
-		sem_post(&fila_vazia);
+	
+	pthread_mutex_lock(&mutex_pizzaiolos);
+	pizzaiolos_finalizados++;
+	if (pizzaiolos_finalizados == num_pizzaiolos_g){
+		pthread_mutex_unlock(&mutex_pizzaiolos);
+		sem_post(&pizzaiolos_encerrados);
+	}
+
+	pthread_mutex_unlock(&mutex_pizzaiolos);
 
 	pthread_exit(NULL);
 }
